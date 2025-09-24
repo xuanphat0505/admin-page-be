@@ -3,7 +3,7 @@ import slugify from 'slugify';
 
 export const uploadNews = async (req, res) => {
   try {
-    const { title, blocks, category, author } = req.body;
+    const { title, blocks, category, author, targetSites } = req.body;
     const files = req.files;
 
     // Parse blocks from JSON string
@@ -12,6 +12,14 @@ export const uploadNews = async (req, res) => {
       parsedBlocks = JSON.parse(blocks);
     } catch (error) {
       return res.status(400).json({ success: false, message: 'Blocks data không hợp lệ.' });
+    }
+
+    // Parse targetSites from JSON string
+    let parsedTargetSites;
+    try {
+      parsedTargetSites = targetSites ? JSON.parse(targetSites) : [];
+    } catch (error) {
+      return res.status(400).json({ success: false, message: 'Target sites data không hợp lệ.' });
     }
 
     if (!title || !files?.thumbnail || !parsedBlocks || parsedBlocks.length === 0) {
@@ -47,6 +55,7 @@ export const uploadNews = async (req, res) => {
       blocks: processedBlocks,
       category: category || 'Tin tổng hợp',
       author: author || 'Admin',
+      targetSites: parsedTargetSites,
     });
 
     return res.status(201).json({
@@ -58,6 +67,7 @@ export const uploadNews = async (req, res) => {
         thumbnail: news.thumbnail,
         category: news.category,
         author: news.author,
+        targetSites: news.targetSites,
         createdAt: news.createdAt,
       },
     });
@@ -102,3 +112,4 @@ export const getNews = async (req, res) => {
     });
   }
 };
+
