@@ -1,9 +1,12 @@
 import express from 'express';
-import { uploadNews, getNews } from '../app/controllers/NewsController.js';
+
+import { uploadNews, getNews, getDetailNews } from '../app/controllers/NewsController.js';
 import uploadNewsImage from '../middlewares/upload.js';
 
 const router = express.Router();
 
+router.get('/', getNews);
+router.get('/:id', getDetailNews);
 router.post(
   '/upload',
   uploadNewsImage.fields([
@@ -12,6 +15,5 @@ router.post(
   ]),
   uploadNews
 );
-router.get('/get', getNews);
 
 export default router;
