@@ -150,6 +150,22 @@ export const getNews = async (req, res) => {
   }
 };
 
+export const getAllNews = async (req, res) => {
+  try {
+    const news = await NewsModel.find();
+    if (!news) {
+      return res
+        .status(404)
+        .json({ success: false, message: "News not found" });
+    }
+    return res
+      .status(200)
+      .json({ success: true, message: "Get all news success" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const getDetailNews = async (req, res) => {
   const newsId = req.params.id;
   try {
