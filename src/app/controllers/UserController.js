@@ -72,6 +72,22 @@ export const updateUser = async (req, res) => {
 
     // Cập nhật các trường khác nếu có thay đổi và hợp lệ   
     if (username) user.username = username.trim() 
+    if (typeof req.body.name === 'string') {
+      const trimmedName = req.body.name.trim()
+      if (!trimmedName) {
+        return res.status(400).json({ success: false, message: 'Ten khong duoc de trong' })
+      }
+      if (trimmedName.length > 64) {
+        return res.status(400).json({ success: false, message: 'Ten khong duoc qua 64 ky tu' })
+      }
+      if (trimmedName !== user.name) {
+        const nameExists = await UserModel.exists({ name: trimmedName, _id: { $ne: id } })
+        if (nameExists) {
+          return res.status(409).json({ success: false, message: 'Ten hien thi da ton tai' })
+        }
+      }
+      user.name = trimmedName
+    }
 
     // Chỉ admin mới được phép chỉnh roles, và chỉ nhận giá trị hợp lệ  
     if (roles) {  
@@ -102,6 +118,7 @@ export const updateUser = async (req, res) => {
       success: true,
       message: 'Cập nhật người dùng thành công',
       data: { id: user._id, 
+        name: user.name, 
         username: user.username, 
         email: user.email, 
         roles: user.roles, 
