@@ -5,6 +5,16 @@ import mongoose from "mongoose"
 // - Ẩn mật khẩu khỏi kết quả truy vấn mặc định (select: false)
 // - Thêm giới hạn/định dạng cho username, email
 const userSchema = new mongoose.Schema({
+    // Tên hiển thị: bắt buộc, trim & giới hạn độ dài tránh dữ liệu xấu
+    name: {
+        type: String,
+        required: [true, 'name la truong bat buoc'],
+        unique: true,
+        index: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 64,
+    },
     // Tên đăng nhập: bắt buộc, duy nhất, loại khoảng trắng hai đầu
     username: {
         type: String,

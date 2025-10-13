@@ -21,12 +21,12 @@ const setJwtCookie = (res, token, maxAgeMs) => {
 // Đăng ký tài khoản mới
 export const register = async (req, res) => {
   try {
-    const { username, email, password } = req.body
+    const { username, email, password, name } = req.body
     const normalizedEmail = (email || '').trim().toLowerCase()
     const normalizedUsername = (username || '').trim()
+    const normalizedName = (name || '').trim()
 
-    // Kiểm tra dữ liệu đầu vào
-    if (!normalizedUsername || !normalizedEmail || !password) {
+    if (!normalizedUsername || !normalizedEmail || !password || !normalizedName) {
       return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' })
     }
 
@@ -39,21 +39,27 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Mật khẩu tối thiểu 6 ký tự' })
     }
 
-    // Kiểm tra trùng lặp username hoặc email
+    if (normalizedName.length > 64) {
+      return res.status(400).json({ success: false, message: 'Tên không được quá 64 ký tự' })
+    }
+
+    // Ki?m tra tr�ng l?p username ho?c email
     const emailExists = await UserModel.findOne({ email: normalizedEmail })
-    if (emailExists) return res.status(409).json(
-      { success: false, message: 'Email đã tồn tại' })
+    if (emailExists) return res.status(409).json({ success: false, message: 'Email đã tồn tại' })
 
-    //Kiểm tra trùng lặp username hoặc email
+    //Ki?m tra tr�ng l?p username ho?c email
     const usernameExists = await UserModel.findOne({ username: normalizedUsername })
-    if (usernameExists) return res.status(409).json(
-      { success: false, message: 'Tên đăng nhập đã tồn tại' })
+    if (usernameExists) return res.status(409).json({ success: false, message: 'Tên đăng nhập đã tồn tại' })
 
-    // Mã hóa mật khẩu
+    const nameExists = await UserModel.findOne({ name: normalizedName })
+    if (nameExists) return res.status(409).json({ success: false, message: 'Ten hien thi da ton tai' })
+
+    // Ma h?a m?t kh?u
     const hashedPassword = await bcrypt.hash(password, 10)
-    
-    // Tạo user mới với vai trò 'user' mặc định
+
+    // T?o user m?i v?i vai tr� 'user' m?c d?nh
     const newUser = new UserModel({
+      name: normalizedName,
       username: normalizedUsername,
       email: normalizedEmail,
       password: hashedPassword,
@@ -61,12 +67,12 @@ export const register = async (req, res) => {
     })
     await newUser.save()
 
-    // Trả về thông tin user (không kèm mật khẩu)
     return res.status(201).json({
       success: true,
       message: 'Đăng ký thành công',
       data: {
         id: newUser._id,
+        name: newUser.name,
         username: newUser.username,
         email: newUser.email,
         roles: newUser.roles,
@@ -129,11 +135,15 @@ export const login = async (req, res) => {
     return res.json({
       success: true,
       message: 'Đăng nhập thành công',
-      data: { user: { 
-        id: foundUser._id, 
-        username: foundUser.username, 
-        email: foundUser.email, 
-        roles: foundUser.roles } },
+      data: {
+        user: {
+          id: foundUser._id,
+          name: foundUser.name,
+          username: foundUser.username,
+          email: foundUser.email,
+          roles: foundUser.roles,
+        },
+      },
     })
   } catch (error) {
     console.error('Lỗi đăng nhập:', error)
