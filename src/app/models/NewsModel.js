@@ -38,6 +38,11 @@ const newsSchema = new mongoose.Schema(
     category: { type: String, default: "Tin tổng hợp" },
     author: { type: String, default: "Admin" },
     targetSites: { type: [String], default: [] },
+    description: {
+      type: String,
+      maxLength: 300,
+      trim: true, // loại bỏ khoảng trắng ở đầu/cuối
+    },
   },
   { timestamps: true }
 );

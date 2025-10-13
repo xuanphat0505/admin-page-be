@@ -3,7 +3,8 @@ import slugify from "slugify";
 
 export const uploadNews = async (req, res) => {
   try {
-    const { title, blocks, category, author, targetSites } = req.body;
+    const { title, description, blocks, category, author, targetSites } =
+      req.body;
     const files = req.files;
 
     // Parse blocks từ JSON
@@ -28,13 +29,22 @@ export const uploadNews = async (req, res) => {
 
     if (
       !title ||
+      !description ||
       !files?.thumbnail ||
       !parsedBlocks ||
       parsedBlocks.length === 0
     ) {
       return res.status(400).json({
         success: false,
-        message: "Title, thumbnail và blocks là bắt buộc.",
+        message: "Title, description, thumbnail và blocks là bắt buộc.",
+      });
+    }
+
+    // Validate độ dài description
+    if (description.length > 300) {
+      return res.status(400).json({
+        success: false,
+        message: "Description không được vượt quá 300 ký tự.",
       });
     }
 
@@ -42,32 +52,26 @@ export const uploadNews = async (req, res) => {
     const processedBlocks = parsedBlocks.map((block) => {
       let newBlock = { ...block };
 
-      // Nếu block là image, tìm file upload từ multer
       if (block.type === "image" && block.content) {
         const imageFile = files.blockImages?.find(
           (file) => file.originalname === block.content
         );
-
         if (imageFile) {
           newBlock.content = imageFile.path; // Cloudinary URL
         }
       }
 
-      // Nếu block có richText nhưng chỉ là string → convert thành mảng [{ text }]
       if (block.type === "paragraph" || block.type === "heading") {
         if (typeof block.richText === "string") {
           newBlock.richText = [{ text: block.richText }];
         } else if (Array.isArray(block.content)) {
-          // trường hợp content chứa array -> copy sang richText
           newBlock.richText = block.content;
         } else if (!block.richText && block.content) {
-          // nếu chỉ có content string
           newBlock.richText = [{ text: block.content }];
         }
       }
 
       if (block.type === "list") {
-        // Đảm bảo list là array của array<richText>
         newBlock.content = (block.content || []).map((item) =>
           typeof item === "string" ? [{ text: item }] : item
         );
@@ -79,6 +83,7 @@ export const uploadNews = async (req, res) => {
     // Tạo tin tức trong DB
     const news = await NewsModel.create({
       title: title.trim(),
+      description: description.trim(),
       slugId: slugify(title, {
         lower: true,
         strict: true,
@@ -97,6 +102,7 @@ export const uploadNews = async (req, res) => {
       data: {
         id: news._id,
         title: news.title,
+        description: news.description,
         thumbnail: news.thumbnail,
         category: news.category,
         author: news.author,
@@ -181,5 +187,42 @@ export const getDetailNews = async (req, res) => {
       .json({ success: true, message: "Get success", data: news });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getHomepageNews = async (req, res) => {
+  try {
+    const highlight = await NewsModel.find({ category: "highlight" })
+      .limit(3)
+      .sort({ createdAt: -1 });
+    const popular = await NewsModel.find({ category: "popular" })
+      .limit(3)
+      .sort({ createdAt: -1 });
+    const greenLife = await NewsModel.find({ category: "green-life" })
+      .limit(5)
+      .sort({ createdAt: -1 });
+    const chat = await NewsModel.find({ category: "chat" })
+      .limit(5)
+      .sort({ createdAt: -1 });
+    const health = await NewsModel.find({ category: "health" })
+      .limit(5)
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "Lấy dữ liệu trang chủ thành công",
+      data: {
+        highlight,
+        popular,
+        greenLife,
+        chat,
+        health,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
