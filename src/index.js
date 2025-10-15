@@ -10,6 +10,7 @@ import mongoose from "mongoose";
 import newsRoutes from "./routes/news.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
+import categoryRoutes from "./routes/category.js";
 
 // config
 
@@ -56,6 +57,7 @@ const connectDB = async () => {
 app.use("/api/v1/news", newsRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/categories", categoryRoutes);
 
 app.listen(PORT, () => {
   connectDB();

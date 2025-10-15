@@ -1,16 +1,20 @@
 import slugify from "slugify";
 import NewsModel from "../models/NewsModel.js";
 
+// Schema lưu từng đoạn rich text (văn bản định dạng)
 const pickPlainText = (segments = []) =>
   segments.map((segment) => segment?.text || "").join("").trim();
 
+// Chuẩn hóa một block nội dung, bao gồm việc xử lý ảnh upload
 const normalizeBlock = (block, files) => {
   if (!block || !block.type) return null;
   const type = block.type;
 
+  // Xử lý block ảnh
   if (type === "image") {
     const alt = (block.alt ?? block?.content?.alt ?? "").trim();
     const caption = (block.caption ?? block?.content?.caption ?? "").trim();
+    // Tên file ảnh có thể nằm ở block.url hoặc block.content
     const rawName =
       typeof block.url === "string" && block.url.trim()
         ? block.url.trim()
@@ -19,6 +23,7 @@ const normalizeBlock = (block, files) => {
         : "";
 
     let url = rawName;
+    // Tìm file upload tương ứng trong req.files
     if (Array.isArray(files?.blockImages) && rawName) {
       const matched = files.blockImages.find(
         (file) => file.originalname === rawName,
@@ -81,8 +86,11 @@ const normalizeBlock = (block, files) => {
     return { type, text: "" };
   }
 
+  // Xử lý block danh sách
   if (type === "list") {
+    // Các mục có thể nằm ở block.items hoặc block.content
     const itemsSource = Array.isArray(block.items) ? block.items : block.content;
+    // Chuẩn hóa từng mục trong danh sách
     const items = Array.isArray(itemsSource)
       ? itemsSource.map((item) => {
           if (Array.isArray(item)) return item;
@@ -98,6 +106,7 @@ const normalizeBlock = (block, files) => {
   return { type };
 };
 
+// Upload tin tức mới
 export const uploadNews = async (req, res) => {
   try {
     const {
@@ -105,7 +114,7 @@ export const uploadNews = async (req, res) => {
       description = "",
       content: contentPayload,
       blocks: legacyBlocksPayload,
-      category,
+      categories,
       author,
       targetSites,
     } = req.body;
@@ -117,7 +126,7 @@ export const uploadNews = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Thiếu dữ liệu nội dung bài viết." });
     }
-
+    
     let parsedContent;
     try {
       parsedContent =
@@ -128,13 +137,29 @@ export const uploadNews = async (req, res) => {
         .json({ success: false, message: "Nội dung bài viết không hợp lệ." });
     }
 
-    let parsedTargetSites;
+    // Xử lý danh sách website mục tiêu
+    let parsedTargetSites = [];
     try {
       parsedTargetSites = targetSites ? JSON.parse(targetSites) : [];
     } catch (error) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Danh sách website mục tiêu không hợp lệ." });
+      parsedTargetSites = Array.isArray(targetSites) ? targetSites : [];
+    }
+    if (!Array.isArray(parsedTargetSites)) {
+      parsedTargetSites = [];
+    }
+    parsedTargetSites = parsedTargetSites
+      .filter((item) => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.trim());
+    parsedTargetSites = Array.from(new Set(parsedTargetSites));
+
+    let parsedCategories = [];
+    try {
+      parsedCategories = categories ? JSON.parse(categories) : [];
+    } catch (error) {
+      parsedCategories = Array.isArray(categories) ? categories : [];
+    }
+    if (!Array.isArray(parsedCategories)) {
+      parsedCategories = [parsedCategories].filter(Boolean);
     }
 
     if (!Array.isArray(parsedTargetSites) || parsedTargetSites.length === 0) {
@@ -145,7 +170,7 @@ export const uploadNews = async (req, res) => {
 
     const trimmedTitle = (title || "").trim();
     const trimmedDescription = (description || "").trim();
-
+    // Kiểm tra các điều kiện bắt buộc
     if (
       !trimmedTitle ||
       !trimmedDescription ||
@@ -185,13 +210,18 @@ export const uploadNews = async (req, res) => {
         .json({ success: false, message: "Ảnh phải có mô tả (alt) và chú thích." });
     }
 
+    const normalizedCategories = (parsedCategories || [])
+      .map((item) => (typeof item === "string" ? item.trim() : String(item)))
+      .filter((item) => item.length > 0);
+    const uniqueCategories = Array.from(new Set(normalizedCategories));
+
     const news = await NewsModel.create({
       title: trimmedTitle,
       description: trimmedDescription,
       slugId: slugify(trimmedTitle, { lower: true, strict: true, locale: "vi" }),
       thumbnail: files.thumbnail[0].path,
       content: normalizedContent,
-      category: category || "Tin tổng hợp",
+      categories: uniqueCategories.length ? uniqueCategories : ["tin-tong-hop"],
       author: author || "Admin",
       targetSites: parsedTargetSites,
     });
@@ -204,7 +234,7 @@ export const uploadNews = async (req, res) => {
         title: news.title,
         description: news.description,
         thumbnail: news.thumbnail,
-        category: news.category,
+        categories: news.categories,
         author: news.author,
         targetSites: news.targetSites,
         createdAt: news.createdAt,
@@ -213,12 +243,30 @@ export const uploadNews = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi uploadNews:", error);
+
+    if (error?.code === 11000 && error?.keyPattern?.slugId) {
+      return res.status(409).json({
+        success: false,
+        message: "Tiêu đề này đã được sử dụng, vui lòng chọn tiêu đề khác.",
+      });
+    }
+
+    if (error?.name === "ValidationError") {
+      const messages = Object.values(error.errors || {}).map((err) => err.message);
+      return res.status(422).json({
+        success: false,
+        message: messages[0] || "Dữ liệu không hợp lệ.",
+      });
+    }
+
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
 
+// Lấy danh sách tin tức với phân trang
 export const getNews = async (req, res) => {
   try {
+    // Phân trang
     const page = parseInt(req.query.page, 10) || 1;
     const limit = 12;
     const skip = (page - 1) * limit;
@@ -246,6 +294,7 @@ export const getNews = async (req, res) => {
   }
 };
 
+// Lấy tất cả tin tức (không phân trang)
 export const getAllNews = async (req, res) => {
   try {
     const news = await NewsModel.find();
@@ -261,6 +310,7 @@ export const getAllNews = async (req, res) => {
   }
 };
 
+// Lấy chi tiết một tin tức theo slugId
 export const getDetailNews = async (req, res) => {
   const newsId = req.params.id;
   try {
@@ -278,21 +328,22 @@ export const getDetailNews = async (req, res) => {
   }
 };
 
+// Lấy tin tức cho trang chủ, phân theo các mục
 export const getHomepageNews = async (req, res) => {
   try {
-    const highlight = await NewsModel.find({ category: "highlight" })
+    const highlight = await NewsModel.find({ categories: "highlight" })
       .limit(3)
       .sort({ createdAt: -1 });
-    const popular = await NewsModel.find({ category: "popular" })
+    const popular = await NewsModel.find({ categories: "popular" })
       .limit(3)
       .sort({ createdAt: -1 });
-    const greenLife = await NewsModel.find({ category: "green-life" })
+    const greenLife = await NewsModel.find({ categories: "green-life" })
       .limit(5)
       .sort({ createdAt: -1 });
-    const chat = await NewsModel.find({ category: "chat" })
+    const chat = await NewsModel.find({ categories: "chat" })
       .limit(5)
       .sort({ createdAt: -1 });
-    const health = await NewsModel.find({ category: "health" })
+    const health = await NewsModel.find({ categories: "health" })
       .limit(5)
       .sort({ createdAt: -1 });
 
