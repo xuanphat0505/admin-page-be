@@ -69,8 +69,10 @@ export const register = async (req, res) => {
         .json({ success: false, message: "Tên hiển thị đã được sử dụng." });
     }
 
+    // Mã hóa mật khẩu
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Tạo user mới với vai trò "user"
     const newUser = new UserModel({
       name: normalizedName,
       username: normalizedUsername,

@@ -43,6 +43,7 @@ const contentBlockSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Schema chính cho tin tức
 const newsSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
@@ -58,7 +59,16 @@ const newsSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    category: { type: String, default: "Tin tổng hợp", trim: true },
+    categories: {
+      type: [String],
+      default: ["tin-tong-hop"],
+      validate: {
+        validator(value) {
+          return Array.isArray(value) && value.every((item) => typeof item === "string");
+        },
+        message: "Danh sách chuyên mục không hợp lệ.",
+      },
+    },
     author: { type: String, default: "Admin", trim: true },
     targetSites: { type: [String], default: [] },
     description: {

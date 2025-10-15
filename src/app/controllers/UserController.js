@@ -55,6 +55,7 @@ export const updateUser = async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
     }
 
+    // Cập nhật email nếu có thay đổi
     if (nextEmail && nextEmail !== (user.email || "").trim().toLowerCase()) {
       const emailExists = await UserModel.exists({ email: nextEmail, _id: { $ne: id } });
       if (emailExists) {
@@ -67,6 +68,7 @@ export const updateUser = async (req, res) => {
       user.username = username.trim();
     }
 
+    // Cập nhật tên hiển thị nếu có thay đổi
     if (typeof req.body.name === "string") {
       const trimmedName = req.body.name.trim();
       if (!trimmedName) {
@@ -168,11 +170,13 @@ export const changePassword = async (req, res) => {
       return res.status(403).json({ success: false, message: "Không đủ quyền." });
     }
 
+    // Tìm người dùng theo ID
     const user = await UserModel.findById(id).select("+password");
     if (!user) {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
     }
 
+    // Nếu không phải admin, kiểm tra mật khẩu hiện tại
     if (!isAdmin) {
       const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
       if (!isCurrentPasswordValid) {
@@ -182,6 +186,7 @@ export const changePassword = async (req, res) => {
       }
     }
 
+    // Cập nhật mật khẩu mới
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedNewPassword;
     user.updatedAt = new Date();
