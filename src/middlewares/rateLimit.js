@@ -25,7 +25,10 @@ export const simpleRateLimit = ({ windowMs = 60_000, max = 30, key = (req) => re
       const retryAfter = Math.ceil((entry.resetAt - now) / 1000)
       res.setHeader('Retry-After', retryAfter)
       // Trả về lỗi 429
-      return res.status(429).json({ success: false, message: 'Quá nhiều yêu cầu, vui lòng thử lại sau' })
+      return res.status(429).json({
+        success: false,
+        message: 'Vượt quá giới hạn yêu cầu, vui lòng thử lại sau.',
+      })
     }
     next()
   }
