@@ -1,6 +1,5 @@
 // libs
 import dotenv from "dotenv";
-dotenv.config();
 
 import express from "express";
 import cors from "cors";
@@ -13,6 +12,7 @@ import userRoutes from "./routes/user.js";
 import categoryRoutes from "./routes/category.js";
 
 // config
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +24,7 @@ app.use(
     credentials: true, // cho phép gửi cookie/authorization header
   })
 );
+
 app.disable("x-powered-by");
 app.use(express.json()); // cho JSON lớn
 app.use(
