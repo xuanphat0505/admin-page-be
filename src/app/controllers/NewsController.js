@@ -312,3 +312,40 @@ export const getHomepageNews = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
+
+export const getHomepageNews = async (req, res) => {
+  try {
+    const highlight = await NewsModel.find({ category: "highlight" })
+      .limit(3)
+      .sort({ createdAt: -1 });
+    const popular = await NewsModel.find({ category: "popular" })
+      .limit(3)
+      .sort({ createdAt: -1 });
+    const greenLife = await NewsModel.find({ category: "green-life" })
+      .limit(5)
+      .sort({ createdAt: -1 });
+    const chat = await NewsModel.find({ category: "chat" })
+      .limit(5)
+      .sort({ createdAt: -1 });
+    const health = await NewsModel.find({ category: "health" })
+      .limit(5)
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "Lấy dữ liệu trang chủ thành công",
+      data: {
+        highlight,
+        popular,
+        greenLife,
+        chat,
+        health,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
