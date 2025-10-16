@@ -184,6 +184,7 @@ export const uploadNews = async (req, res) => {
       });
     }
 
+    
     if (trimmedDescription.length > 300) {
       return res
         .status(400)
@@ -266,9 +267,9 @@ export const uploadNews = async (req, res) => {
 // Lấy danh sách tin tức với phân trang
 export const getNews = async (req, res) => {
   try {
-    // Phân trang
+    // Lấy page và limit từ query
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = 12;
+    const limit = parseInt(req.query.limit, 10) || 12; // mặc định 12 nếu không truyền
     const skip = (page - 1) * limit;
 
     const totalItems = await NewsModel.countDocuments();
@@ -292,7 +293,7 @@ export const getNews = async (req, res) => {
     console.error("Lỗi getNews:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
-};
+}
 
 // Lấy tất cả tin tức (không phân trang)
 export const getAllNews = async (req, res) => {
@@ -329,41 +330,6 @@ export const getDetailNews = async (req, res) => {
 };
 
 // Lấy tin tức cho trang chủ, phân theo các mục
-export const getHomepageNews = async (req, res) => {
-  try {
-    const highlight = await NewsModel.find({ categories: "highlight" })
-      .limit(3)
-      .sort({ createdAt: -1 });
-    const popular = await NewsModel.find({ categories: "popular" })
-      .limit(3)
-      .sort({ createdAt: -1 });
-    const greenLife = await NewsModel.find({ categories: "green-life" })
-      .limit(5)
-      .sort({ createdAt: -1 });
-    const chat = await NewsModel.find({ categories: "chat" })
-      .limit(5)
-      .sort({ createdAt: -1 });
-    const health = await NewsModel.find({ categories: "health" })
-      .limit(5)
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json({
-      success: true,
-      message: "Lấy dữ liệu trang chủ thành công",
-      data: {
-        highlight,
-        popular,
-        greenLife,
-        chat,
-        health,
-      },
-    });
-  } catch (error) {
-    console.error("Lỗi getHomepageNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
-  }
-};
-
 export const getHomepageNews = async (req, res) => {
   try {
     const highlight = await NewsModel.find({ category: "highlight" })
