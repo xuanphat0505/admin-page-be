@@ -287,17 +287,31 @@ export const getNews = async (req, res) => {
     const limit = parseInt(req.query.limit, 10) || 12;
     const skip = (page - 1) * limit;
 
-    // Lấy category từ query
-    const { category } = req.query;
+    // Lấy category và keyword từ query
+    const { category, keyword } = req.query;
 
     let filter = {};
+
+    // Filter theo category
     if (category) {
-      filter = {
-        $or: [
-          { categories: category }, // mảng categories chứa category
-          { category: category }, // field category bằng category
-        ],
+      filter.$or = [{ categories: category }, { category: category }];
+    }
+
+    // Filter theo keyword (tìm kiếm trong title và description)
+    if (keyword && keyword.trim()) {
+      const searchRegex = new RegExp(keyword.trim(), "i"); // case-insensitive
+      const keywordFilter = {
+        $or: [{ title: searchRegex }, { description: searchRegex }],
       };
+
+      // Nếu đã có filter category, kết hợp với AND
+      if (filter.$or) {
+        filter = {
+          $and: [{ $or: filter.$or }, keywordFilter],
+        };
+      } else {
+        filter = keywordFilter;
+      }
     }
 
     const totalItems = await NewsModel.countDocuments(filter);
@@ -399,12 +413,15 @@ export const getHomepageNews = async (req, res) => {
   }
 };
 
+// Hàm lấy slug root (bỏ hậu tố -so-xx nếu có)
+function getSlugRoot(slug) {
+  return slug.replace(/-so-\d+$/, "");
+}
+
 // Lấy tin tức tương tự
 export const getRelatedPosts = async (req, res) => {
   try {
     const { slug } = req.params;
-
-    // Lấy bài viết hiện tại
     const current = await NewsModel.findOne({ slugId: slug });
     if (!current) {
       return res
@@ -420,68 +437,55 @@ export const getRelatedPosts = async (req, res) => {
       currentCategories = [current.category];
     }
 
-    // Nếu không có category, lấy bài viết mới nhất
-    if (currentCategories.length === 0) {
-      const latestPosts = await NewsModel.find({ _id: { $ne: current._id } })
-        .sort({ createdAt: -1 })
-        .limit(3);
+    // Lấy slug root hiện tại
+    const baseSlugRoot = getSlugRoot(current.slugId);
 
-      return res.json({
-        success: true,
-        message: "Lấy bài viết liên quan thành công",
-        data: latestPosts,
-      });
-    }
-
-    // Chuẩn hóa slug hiện tại
-    const baseSlug = slugify(current.slugId, { lower: true });
-
-    // Lấy bài viết cùng category
+    // Lấy tất cả candidates (cùng category hoặc toàn bộ)
     const candidates = await NewsModel.find({
       _id: { $ne: current._id },
-      $or: [
-        { categories: { $in: currentCategories } },
-        { category: { $in: currentCategories } },
-      ],
-    }).limit(20); // Giới hạn số lượng để tính toán nhanh hơn
+    }).limit(50);
 
-    // Nếu không có bài viết cùng category
-    if (candidates.length === 0) {
-      const latestPosts = await NewsModel.find({ _id: { $ne: current._id } })
-        .sort({ createdAt: -1 })
-        .limit(3);
-
-      return res.json({
-        success: true,
-        message: "Lấy bài viết liên quan thành công",
-        data: latestPosts,
-      });
-    }
-
-    // Tính độ tương đồng slug
+    // Tính similarity slug trước
     const scored = candidates.map((post) => {
-      const candidateSlug = slugify(post.slugId, { lower: true });
+      const candidateRoot = getSlugRoot(post.slugId);
       const slugScore = stringSimilarity.compareTwoStrings(
-        baseSlug,
-        candidateSlug
+        baseSlugRoot,
+        candidateRoot
       );
 
-      // Tính điểm category (cùng category = +0.3)
+      // Điểm category chỉ cộng thêm sau
       const categoryScore = currentCategories.some(
         (cat) => post.categories?.includes(cat) || post.category === cat
       )
         ? 0.3
         : 0;
 
-      const totalScore = slugScore + categoryScore;
-      return { post, score: totalScore };
+      return { post, slugScore, totalScore: slugScore + categoryScore };
     });
 
-    // Sắp xếp theo score giảm dần
-    scored.sort((a, b) => b.score - a.score);
+    // B1: lọc theo slugScore trước (ví dụ >= 0.5)
+    let filtered = scored.filter((item) => item.slugScore >= 0.5);
 
-    // Lấy top 3 bài viết
-    const related = scored.map((item) => item.post);
+    // Nếu không đủ bài, fallback lấy theo category
+    if (filtered.length === 0 && currentCategories.length > 0) {
+      filtered = scored.filter((item) => item.totalScore > 0.3);
+    }
+
+    // Nếu vẫn không có, fallback lấy bài mới nhất
+    if (filtered.length === 0) {
+      const latestPosts = await NewsModel.find({ _id: { $ne: current._id } })
+        .sort({ createdAt: -1 })
+        .limit(3);
+      return res.json({ success: true, data: latestPosts });
+    }
+
+    // Sắp xếp theo slugScore trước, sau đó mới đến totalScore
+    filtered.sort((a, b) => {
+      if (b.slugScore !== a.slugScore) return b.slugScore - a.slugScore;
+      return b.totalScore - a.totalScore;
+    });
+
+    const related = filtered.map((item) => item.post);
 
     return res.json({
       success: true,
