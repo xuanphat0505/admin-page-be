@@ -2,11 +2,11 @@ import slugify from "slugify";
 import CategoryModel from "../models/CategoryModel.js";
 
 const DEFAULT_CATEGORIES = [
-  { value: "highlight", label: "Highlight" },
-  { value: "popular", label: "Popular" },
-  { value: "green-life", label: "Green Life" },
-  { value: "chat", label: "Chat" },
-  { value: "health", label: "Health" },
+  { value: "highlight", label: "Nổi bật" },
+  { value: "popular", label: "Được quan tâm" },
+  { value: "green-life", label: "Sống xanh" },
+  { value: "chat", label: "Chất" },
+  { value: "health", label: "Khỏe" },
 ];
 
 const ensureDefaultCategories = async () => {
