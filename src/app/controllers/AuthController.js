@@ -2,14 +2,23 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import UserModel from "../models/UserModel.js";
 import { createCsrfToken, setCsrfCookie } from "../../middlewares/verify.js";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import UserModel from "../models/UserModel.js";
+import { createCsrfToken, setCsrfCookie } from "../../middlewares/verify.js";
 
 // Cấu hình cookie cho môi trường hiện tại
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || "lax").toLowerCase();
 const COOKIE_SECURE =
   process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
+const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || "lax").toLowerCase();
+const COOKIE_SECURE =
+  process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
 
 // Thiết lập cookie JWT
+// Thiết lập cookie JWT
 const setJwtCookie = (res, token, maxAgeMs) => {
+  res.cookie("jwt", token, {
   res.cookie("jwt", token, {
     httpOnly: true,
     sameSite: COOKIE_SAMESITE,
@@ -26,19 +35,31 @@ export const register = async (req, res) => {
     const normalizedEmail = (email || "").trim().toLowerCase();
     const normalizedUsername = (username || "").trim();
     const normalizedName = (name || "").trim();
+    const { username, email, password, name } = req.body;
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    const normalizedUsername = (username || "").trim();
+    const normalizedName = (name || "").trim();
 
     if (!normalizedUsername || !normalizedEmail || !password || !normalizedName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu thông tin bắt buộc." });
       return res
         .status(400)
         .json({ success: false, message: "Thiếu thông tin bắt buộc." });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: "Email không hợp lệ." });
       return res.status(400).json({ success: false, message: "Email không hợp lệ." });
     }
 
     if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Mật khẩu phải có ít nhất 6 ký tự." });
       return res
         .status(400)
         .json({ success: false, message: "Mật khẩu phải có ít nhất 6 ký tự." });
@@ -48,8 +69,22 @@ export const register = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Tên hiển thị không được vượt quá 64 ký tự." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Tên hiển thị không được vượt quá 64 ký tự." });
     }
 
+    const emailExists = await UserModel.findOne({ email: normalizedEmail });
+    if (emailExists) {
+      return res.status(409).json({ success: false, message: "Email đã được sử dụng." });
+    }
+
+    const usernameExists = await UserModel.findOne({ username: normalizedUsername });
+    if (usernameExists) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Tên đăng nhập đã được sử dụng." });
+    }
     const emailExists = await UserModel.findOne({ email: normalizedEmail });
     if (emailExists) {
       return res.status(409).json({ success: false, message: "Email đã được sử dụng." });
@@ -81,9 +116,13 @@ export const register = async (req, res) => {
       roles: ["user"],
     });
     await newUser.save();
+      roles: ["user"],
+    });
+    await newUser.save();
 
     return res.status(201).json({
       success: true,
+      message: "Đăng ký thành công",
       message: "Đăng ký thành công",
       data: {
         id: newUser._id,
@@ -93,15 +132,24 @@ export const register = async (req, res) => {
         roles: newUser.roles,
       },
     });
+    });
   } catch (error) {
+    console.error("Lỗi đăng ký:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
     console.error("Lỗi đăng ký:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
+};
 
+// Đăng nhập: trả JWT qua cookie HttpOnly và cấp CSRF token
 // Đăng nhập: trả JWT qua cookie HttpOnly và cấp CSRF token
 export const login = async (req, res) => {
   try {
+    const { user, pwd } = req.body;
+    const userInput = (user || "").trim();
+    const emailInput = userInput.toLowerCase();
+
     const { user, pwd } = req.body;
     const userInput = (user || "").trim();
     const emailInput = userInput.toLowerCase();
@@ -110,9 +158,11 @@ export const login = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Thiếu tên đăng nhập hoặc mật khẩu." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu tên đăng nhập hoặc mật khẩu." });
     }
 
-    // Tìm user theo username hoặc email
     const foundUser = await UserModel.findOne({
       $or: [{ username: userInput }, { email: emailInput }],
       isActive: true,
@@ -141,14 +191,20 @@ export const login = async (req, res) => {
       secret,
       { expiresIn: Math.floor(maxAgeMs / 1000) },
     );
+      { expiresIn: Math.floor(maxAgeMs / 1000) },
+    );
 
     setJwtCookie(res, accessToken, maxAgeMs);
+    setJwtCookie(res, accessToken, maxAgeMs);
 
+    const csrf = createCsrfToken();
+    setCsrfCookie(res, csrf);
     const csrf = createCsrfToken();
     setCsrfCookie(res, csrf);
 
     return res.json({
       success: true,
+      message: "Đăng nhập thành công",
       message: "Đăng nhập thành công",
       data: {
         user: {
@@ -160,10 +216,14 @@ export const login = async (req, res) => {
         },
       },
     });
+    });
   } catch (error) {
     console.error("Lỗi đăng nhập:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Lỗi đăng nhập:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
+};
 };
 
 // Đăng xuất: xóa cookie JWT và CSRF
@@ -184,15 +244,32 @@ export const logout = async (req, res) => {
       path: "/",
     });
     return res.json({ success: true, message: "Đăng xuất thành công" });
+      secure: COOKIE_SECURE || COOKIE_SAMESITE === "none",
+      path: "/",
+    });
+    return res.json({ success: true, message: "Đăng xuất thành công" });
   } catch (error) {
+    console.error("Lỗi đăng xuất:", error);
+    return res.status(500).json({ success: false, message: "Không thể đăng xuất." });
     console.error("Lỗi đăng xuất:", error);
     return res.status(500).json({ success: false, message: "Không thể đăng xuất." });
   }
 };
+};
 
+// Heartbeat: gia hạn cookie JWT
 // Heartbeat: gia hạn cookie JWT
 export const heartbeat = async (req, res) => {
   try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT_SECRET chưa được cấu hình");
+
+    const { userId, username, roles } = req.user || {};
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Phiên đăng nhập không còn hiệu lực." });
+    }
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new Error("JWT_SECRET chưa được cấu hình");
 
@@ -212,14 +289,28 @@ export const heartbeat = async (req, res) => {
     );
     setJwtCookie(res, accessToken, maxAgeMs);
     return res.json({ success: true });
+      { userId, username, roles },
+      secret,
+      { expiresIn: Math.floor(maxAgeMs / 1000) },
+    );
+    setJwtCookie(res, accessToken, maxAgeMs);
+    return res.json({ success: true });
   } catch (error) {
+    console.error("Lỗi heartbeat:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
     console.error("Lỗi heartbeat:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
+};
 
 // Cấp token CSRF cho frontend
+// Cấp token CSRF cho frontend
 export const csrfToken = (req, res) => {
+  const token = createCsrfToken();
+  setCsrfCookie(res, token);
+  return res.json({ success: true, csrfToken: token });
+};
   const token = createCsrfToken();
   setCsrfCookie(res, token);
   return res.json({ success: true, csrfToken: token });
