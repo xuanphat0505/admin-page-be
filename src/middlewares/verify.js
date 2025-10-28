@@ -34,6 +34,8 @@ export const issueCsrfToken = (req, res) => {
 export const verifyCsrf = (req, res, next) => {
   const method = (req.method || "GET").toUpperCase();
   const safeMethods = ["GET", "HEAD", "OPTIONS"];
+  const method = (req.method || "GET").toUpperCase();
+  const safeMethods = ["GET", "HEAD", "OPTIONS"];
 
   // Các phương thức an toàn không cần kiểm tra CSRF
   if (safeMethods.includes(method)) return next();
@@ -48,7 +50,13 @@ export const verifyCsrf = (req, res, next) => {
       success: false,
       message: "Mã bảo vệ CSRF không khớp.",
     });
+    return res.status(403).json({
+      success: false,
+      message: "Mã bảo vệ CSRF không khớp.",
+    });
   }
+  next();
+};
   next();
 };
 
@@ -69,18 +77,42 @@ export const verifyJWT = (req, res, next) => {
     const decoded = jwt.verify(token, secret);
     req.user = decoded;
     next();
+    const token = req.cookies?.jwt;
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Phiên đăng nhập không hợp lệ hoặc đã hết hạn.",
+      });
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT_SECRET chưa được cấu hình");
+
+    const decoded = jwt.verify(token, secret);
+    req.user = decoded;
+    next();
   } catch (err) {
+    return res.status(401).json({
+      success: false,
+      message: "Phiên đăng nhập đã hết hạn hoặc không hợp lệ.",
+    });
     return res.status(401).json({
       success: false,
       message: "Phiên đăng nhập đã hết hạn hoặc không hợp lệ.",
     });
   }
 };
+};
 
 // Middleware kiểm tra vai trò người dùng
 export const requireRole = (role) => (req, res, next) => {
   const roles = req.user?.roles || [];
+  const roles = req.user?.roles || [];
   if (!roles.includes(role)) {
+    return res.status(403).json({
+      success: false,
+      message: "Không đủ quyền truy cập.",
+    });
     return res.status(403).json({
       success: false,
       message: "Không đủ quyền truy cập.",
@@ -88,5 +120,8 @@ export const requireRole = (role) => (req, res, next) => {
   }
   next();
 };
+  next();
+};
 
+export const ALLOWED_ROLES = ["user", "editor", "admin"];
 export const ALLOWED_ROLES = ["user", "editor", "admin"];

@@ -1,4 +1,5 @@
 import slugify from "slugify";
+import slugify from "slugify";
 import NewsModel from "../models/NewsModel.js";
 import stringSimilarity from "string-similarity";
 
@@ -189,6 +190,7 @@ export const uploadNews = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Thiếu tiêu đề, mô tả, ảnh minh họa hoặc nội dung.",
+        message: "Thiếu tiêu đề, mô tả, ảnh minh họa hoặc nội dung.",
       });
     }
 
@@ -228,6 +230,7 @@ export const uploadNews = async (req, res) => {
     const news = await NewsModel.create({
       title: trimmedTitle,
       description: trimmedDescription,
+      slugId: slugify(trimmedTitle, { lower: true, strict: true }),
       slugId: slugify(trimmedTitle, {
         lower: true,
         strict: true,
@@ -334,6 +337,8 @@ export const getNews = async (req, res) => {
   } catch (error) {
     console.error("Lỗi getNews:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Lỗi getNews:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
 
@@ -350,6 +355,8 @@ export const getAllNews = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Lấy tin tức thành công", data: news });
   } catch (error) {
+    console.error("Lỗi getAllNews:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
     console.error("Lỗi getAllNews:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
@@ -372,25 +379,27 @@ export const getDetailNews = async (req, res) => {
   } catch (error) {
     console.error("Lỗi getDetailNews:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Lỗi getDetailNews:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
 
 // Lấy tin tức cho trang chủ, phân theo các mục
 export const getHomepageNews = async (req, res) => {
   try {
-    const highlight = await NewsModel.find({ category: "highlight" })
+    const highlight = await NewsModel.find({ categories: "highlight" })
       .limit(3)
       .sort({ createdAt: -1 });
-    const popular = await NewsModel.find({ category: "popular" })
+    const popular = await NewsModel.find({ categories: "popular" })
       .limit(3)
       .sort({ createdAt: -1 });
-    const greenLife = await NewsModel.find({ category: "green-life" })
+    const greenLife = await NewsModel.find({ categories: "green-life" })
       .limit(5)
       .sort({ createdAt: -1 });
-    const chat = await NewsModel.find({ category: "chat" })
+    const chat = await NewsModel.find({ categories: "chat" })
       .limit(5)
       .sort({ createdAt: -1 });
-    const health = await NewsModel.find({ category: "health" })
+    const health = await NewsModel.find({ categories: "health" })
       .limit(5)
       .sort({ createdAt: -1 });
 
@@ -406,6 +415,10 @@ export const getHomepageNews = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Lỗi getHomepageNews:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Lỗi getHomepageNews:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
     return res.status(500).json({
       success: false,
       message: error.message,
