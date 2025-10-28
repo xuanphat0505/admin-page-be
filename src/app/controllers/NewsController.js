@@ -1,10 +1,14 @@
 import slugify from "slugify";
 import slugify from "slugify";
 import NewsModel from "../models/NewsModel.js";
+import stringSimilarity from "string-similarity";
 
 // Schema lưu từng đoạn rich text (văn bản định dạng)
 const pickPlainText = (segments = []) =>
-  segments.map((segment) => segment?.text || "").join("").trim();
+  segments
+    .map((segment) => segment?.text || "")
+    .join("")
+    .trim();
 
 // Chuẩn hóa một block nội dung, bao gồm việc xử lý ảnh upload
 const normalizeBlock = (block, files) => {
@@ -27,7 +31,7 @@ const normalizeBlock = (block, files) => {
     // Tìm file upload tương ứng trong req.files
     if (Array.isArray(files?.blockImages) && rawName) {
       const matched = files.blockImages.find(
-        (file) => file.originalname === rawName,
+        (file) => file.originalname === rawName
       );
       if (matched) {
         url = matched.path;
@@ -42,7 +46,8 @@ const normalizeBlock = (block, files) => {
       block.level ||
       block?.content?.level ||
       (Array.isArray(block.level) ? block.level[0] : "H2");
-    const level = typeof levelSource === "string" ? levelSource.toUpperCase() : "H2";
+    const level =
+      typeof levelSource === "string" ? levelSource.toUpperCase() : "H2";
     const headingText =
       typeof block.text === "string"
         ? block.text
@@ -90,7 +95,9 @@ const normalizeBlock = (block, files) => {
   // Xử lý block danh sách
   if (type === "list") {
     // Các mục có thể nằm ở block.items hoặc block.content
-    const itemsSource = Array.isArray(block.items) ? block.items : block.content;
+    const itemsSource = Array.isArray(block.items)
+      ? block.items
+      : block.content;
     // Chuẩn hóa từng mục trong danh sách
     const items = Array.isArray(itemsSource)
       ? itemsSource.map((item) => {
@@ -127,7 +134,7 @@ export const uploadNews = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Thiếu dữ liệu nội dung bài viết." });
     }
-    
+
     let parsedContent;
     try {
       parsedContent =
@@ -164,9 +171,10 @@ export const uploadNews = async (req, res) => {
     }
 
     if (!Array.isArray(parsedTargetSites) || parsedTargetSites.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Cần chọn ít nhất một website mục tiêu." });
+      return res.status(400).json({
+        success: false,
+        message: "Cần chọn ít nhất một website mục tiêu.",
+      });
     }
 
     const trimmedTitle = (title || "").trim();
@@ -187,9 +195,10 @@ export const uploadNews = async (req, res) => {
     }
 
     if (trimmedDescription.length > 300) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Mô tả không được vượt quá 300 ký tự." });
+      return res.status(400).json({
+        success: false,
+        message: "Mô tả không được vượt quá 300 ký tự.",
+      });
     }
 
     const normalizedContent = parsedContent
@@ -203,13 +212,14 @@ export const uploadNews = async (req, res) => {
     }
 
     const missingImageMeta = normalizedContent.some(
-      (block) => block.type === "image" && (!block.alt || !block.caption),
+      (block) => block.type === "image" && (!block.alt || !block.caption)
     );
 
     if (missingImageMeta) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Ảnh phải có mô tả (alt) và chú thích." });
+      return res.status(400).json({
+        success: false,
+        message: "Ảnh phải có mô tả (alt) và chú thích.",
+      });
     }
 
     const normalizedCategories = (parsedCategories || [])
@@ -221,6 +231,11 @@ export const uploadNews = async (req, res) => {
       title: trimmedTitle,
       description: trimmedDescription,
       slugId: slugify(trimmedTitle, { lower: true, strict: true }),
+      slugId: slugify(trimmedTitle, {
+        lower: true,
+        strict: true,
+        locale: "vi",
+      }),
       thumbnail: files.thumbnail[0].path,
       content: normalizedContent,
       categories: uniqueCategories.length ? uniqueCategories : ["tin-tong-hop"],
@@ -254,7 +269,9 @@ export const uploadNews = async (req, res) => {
     }
 
     if (error?.name === "ValidationError") {
-      const messages = Object.values(error.errors || {}).map((err) => err.message);
+      const messages = Object.values(error.errors || {}).map(
+        (err) => err.message
+      );
       return res.status(422).json({
         success: false,
         message: messages[0] || "Dữ liệu không hợp lệ.",
@@ -268,13 +285,40 @@ export const uploadNews = async (req, res) => {
 // Lấy danh sách tin tức với phân trang
 export const getNews = async (req, res) => {
   try {
-    // Phân trang
+    // Lấy page và limit từ query
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = 12;
+    const limit = parseInt(req.query.limit, 10) || 12;
     const skip = (page - 1) * limit;
 
-    const totalItems = await NewsModel.countDocuments();
-    const news = await NewsModel.find()
+    // Lấy category và keyword từ query
+    const { category, keyword } = req.query;
+
+    let filter = {};
+
+    // Filter theo category
+    if (category) {
+      filter.$or = [{ categories: category }, { category: category }];
+    }
+
+    // Filter theo keyword (tìm kiếm trong title và description)
+    if (keyword && keyword.trim()) {
+      const searchRegex = new RegExp(keyword.trim(), "i"); // case-insensitive
+      const keywordFilter = {
+        $or: [{ title: searchRegex }, { description: searchRegex }],
+      };
+
+      // Nếu đã có filter category, kết hợp với AND
+      if (filter.$or) {
+        filter = {
+          $and: [{ $or: filter.$or }, keywordFilter],
+        };
+      } else {
+        filter = keywordFilter;
+      }
+    }
+
+    const totalItems = await NewsModel.countDocuments(filter);
+    const news = await NewsModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -303,9 +347,9 @@ export const getAllNews = async (req, res) => {
   try {
     const news = await NewsModel.find();
     if (!news || news.length === 0) {
-      return res.status(404).json({ success: false, message: "Không có tin tức." });
-    if (!news || news.length === 0) {
-      return res.status(404).json({ success: false, message: "Không có tin tức." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không có tin tức." });
     }
     return res
       .status(200)
@@ -324,8 +368,9 @@ export const getDetailNews = async (req, res) => {
   try {
     const news = await NewsModel.findOne({ slugId: newsId });
     if (!news) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy tin tức." });
-      return res.status(404).json({ success: false, message: "Không tìm thấy tin tức." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy tin tức." });
     }
 
     return res
@@ -374,5 +419,94 @@ export const getHomepageNews = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
     console.error("Lỗi getHomepageNews:", error);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Hàm lấy slug root (bỏ hậu tố -so-xx nếu có)
+function getSlugRoot(slug) {
+  return slug.replace(/-so-\d+$/, "");
+}
+
+// Lấy tin tức tương tự
+export const getRelatedPosts = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const current = await NewsModel.findOne({ slugId: slug });
+    if (!current) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy bài viết" });
+    }
+
+    // Chuẩn hóa categories
+    let currentCategories = [];
+    if (Array.isArray(current.categories) && current.categories.length > 0) {
+      currentCategories = current.categories;
+    } else if (current.category) {
+      currentCategories = [current.category];
+    }
+
+    // Lấy slug root hiện tại
+    const baseSlugRoot = getSlugRoot(current.slugId);
+
+    // Lấy tất cả candidates (cùng category hoặc toàn bộ)
+    const candidates = await NewsModel.find({
+      _id: { $ne: current._id },
+    }).limit(50);
+
+    // Tính similarity slug trước
+    const scored = candidates.map((post) => {
+      const candidateRoot = getSlugRoot(post.slugId);
+      const slugScore = stringSimilarity.compareTwoStrings(
+        baseSlugRoot,
+        candidateRoot
+      );
+
+      // Điểm category chỉ cộng thêm sau
+      const categoryScore = currentCategories.some(
+        (cat) => post.categories?.includes(cat) || post.category === cat
+      )
+        ? 0.3
+        : 0;
+
+      return { post, slugScore, totalScore: slugScore + categoryScore };
+    });
+
+    // B1: lọc theo slugScore trước (ví dụ >= 0.5)
+    let filtered = scored.filter((item) => item.slugScore >= 0.5);
+
+    // Nếu không đủ bài, fallback lấy theo category
+    if (filtered.length === 0 && currentCategories.length > 0) {
+      filtered = scored.filter((item) => item.totalScore > 0.3);
+    }
+
+    // Nếu vẫn không có, fallback lấy bài mới nhất
+    if (filtered.length === 0) {
+      const latestPosts = await NewsModel.find({ _id: { $ne: current._id } })
+        .sort({ createdAt: -1 })
+        .limit(3);
+      return res.json({ success: true, data: latestPosts });
+    }
+
+    // Sắp xếp theo slugScore trước, sau đó mới đến totalScore
+    filtered.sort((a, b) => {
+      if (b.slugScore !== a.slugScore) return b.slugScore - a.slugScore;
+      return b.totalScore - a.totalScore;
+    });
+
+    const related = filtered.map((item) => item.post);
+
+    return res.json({
+      success: true,
+      message: "Lấy bài viết liên quan thành công",
+      data: related,
+    });
+  } catch (error) {
+    console.error("Lỗi getRelatedPosts:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };

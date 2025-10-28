@@ -5,6 +5,7 @@ import {
   getNews,
   getDetailNews,
   getHomepageNews,
+  getRelatedPosts,
 } from "../app/controllers/NewsController.js";
 import uploadNewsImage from "../middlewares/upload.js";
 
@@ -12,6 +13,7 @@ const router = express.Router();
 
 router.get("/", getNews);
 router.get("/home-page", getHomepageNews);
+router.get("/related/:slug", getRelatedPosts);
 router.get("/:id", getDetailNews);
 router.post(
   "/upload",
