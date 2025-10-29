@@ -1,25 +1,20 @@
 import slugify from "slugify";
-import slugify from "slugify";
-import NewsModel from "../models/NewsModel.js";
 import stringSimilarity from "string-similarity";
+import NewsModel from "../models/NewsModel.js";
 
-// Schema lưu từng đoạn rich text (văn bản định dạng)
 const pickPlainText = (segments = []) =>
   segments
     .map((segment) => segment?.text || "")
     .join("")
     .trim();
 
-// Chuẩn hóa một block nội dung, bao gồm việc xử lý ảnh upload
 const normalizeBlock = (block, files) => {
   if (!block || !block.type) return null;
   const type = block.type;
 
-  // Xử lý block ảnh
   if (type === "image") {
     const alt = (block.alt ?? block?.content?.alt ?? "").trim();
     const caption = (block.caption ?? block?.content?.caption ?? "").trim();
-    // Tên file ảnh có thể nằm ở block.url hoặc block.content
     const rawName =
       typeof block.url === "string" && block.url.trim()
         ? block.url.trim()
@@ -28,10 +23,9 @@ const normalizeBlock = (block, files) => {
         : "";
 
     let url = rawName;
-    // Tìm file upload tương ứng trong req.files
     if (Array.isArray(files?.blockImages) && rawName) {
       const matched = files.blockImages.find(
-        (file) => file.originalname === rawName
+        (file) => file.originalname === rawName,
       );
       if (matched) {
         url = matched.path;
@@ -92,13 +86,10 @@ const normalizeBlock = (block, files) => {
     return { type, text: "" };
   }
 
-  // Xử lý block danh sách
   if (type === "list") {
-    // Các mục có thể nằm ở block.items hoặc block.content
     const itemsSource = Array.isArray(block.items)
       ? block.items
       : block.content;
-    // Chuẩn hóa từng mục trong danh sách
     const items = Array.isArray(itemsSource)
       ? itemsSource.map((item) => {
           if (Array.isArray(item)) return item;
@@ -114,7 +105,101 @@ const normalizeBlock = (block, files) => {
   return { type };
 };
 
-// Upload tin tức mới
+const DEFAULT_CATEGORY = { value: "Tin tong hop", slug: "tin-tong-hop" };
+const MAX_CATEGORY_LABEL_LENGTH = 128;
+
+const normalizeCategoryInput = (input) => {
+  if (!input) return null;
+
+  if (typeof input === "string") {
+    const label = input.trim();
+    if (!label || label.length > MAX_CATEGORY_LABEL_LENGTH) return null;
+    const slug = slugify(label, { lower: true, strict: true, locale: "vi", trim: true });
+    if (!slug) return null;
+    return { value: label, slug };
+  }
+
+  if (typeof input === "object") {
+    const rawLabel =
+      (typeof input.value === "string" && typeof input.slug === "string"
+        ? input.value
+        : undefined) ||
+      input.label ||
+      input.name ||
+      input.title ||
+      input.value;
+    const label = typeof rawLabel === "string" ? rawLabel.trim() : "";
+    const rawSlug = typeof input.slug === "string" ? input.slug.trim() : "";
+    const fallbackSlug =
+      rawSlug ||
+      (typeof input.value === "string" && !label ? input.value.trim() : "") ||
+      "";
+
+    if (!label && !fallbackSlug) return null;
+
+    const finalLabel = label || fallbackSlug;
+    if (finalLabel.length > MAX_CATEGORY_LABEL_LENGTH) return null;
+
+    const slugSource = fallbackSlug || finalLabel;
+    const slug = slugify(slugSource, { lower: true, strict: true, locale: "vi", trim: true });
+    if (!slug) return null;
+
+    return { value: finalLabel, slug };
+  }
+
+  return null;
+};
+
+const normalizeCategoryList = (categories) => {
+  if (!Array.isArray(categories)) {
+    return { normalized: [], invalid: false };
+  }
+
+  const map = new Map();
+  let invalid = false;
+
+  categories.forEach((item) => {
+    const normalized = normalizeCategoryInput(item);
+    if (!normalized) {
+      invalid = true;
+      return;
+    }
+    if (!map.has(normalized.slug)) {
+      map.set(normalized.slug, normalized);
+    }
+  });
+
+  return { normalized: Array.from(map.values()), invalid };
+};
+
+const extractCategorySlugs = (categories) => {
+  if (!Array.isArray(categories)) return [];
+  return categories
+    .map((item) => {
+      if (!item) return "";
+      if (typeof item === "string") return item.trim();
+      if (typeof item === "object") {
+        if (typeof item.slug === "string" && item.slug.trim()) return item.slug.trim();
+        if (typeof item.value === "string" && item.value.trim()) {
+          return slugify(item.value.trim(), { lower: true, strict: true, locale: "vi", trim: true });
+        }
+      }
+      return "";
+    })
+    .filter(Boolean);
+};
+
+const categoryMatchesSlug = (categoryEntry, slug) => {
+  if (!slug) return false;
+  if (typeof categoryEntry === "string") {
+    return categoryEntry === slug;
+  }
+  if (categoryEntry && typeof categoryEntry === "object") {
+    return categoryEntry.slug === slug || categoryEntry.value === slug;
+  }
+  return false;
+};
+
 export const uploadNews = async (req, res) => {
   try {
     const {
@@ -132,7 +217,7 @@ export const uploadNews = async (req, res) => {
     if (!rawContent) {
       return res
         .status(400)
-        .json({ success: false, message: "Thiếu dữ liệu nội dung bài viết." });
+        .json({ success: false, message: "Thieu du lieu noi dung bai viet." });
     }
 
     let parsedContent;
@@ -142,10 +227,9 @@ export const uploadNews = async (req, res) => {
     } catch (error) {
       return res
         .status(400)
-        .json({ success: false, message: "Nội dung bài viết không hợp lệ." });
+        .json({ success: false, message: "Noi dung bai viet khong hop le." });
     }
 
-    // Xử lý danh sách website mục tiêu
     let parsedTargetSites = [];
     try {
       parsedTargetSites = targetSites ? JSON.parse(targetSites) : [];
@@ -173,13 +257,12 @@ export const uploadNews = async (req, res) => {
     if (!Array.isArray(parsedTargetSites) || parsedTargetSites.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Cần chọn ít nhất một website mục tiêu.",
+        message: "Can chon it nhat mot website muc tieu.",
       });
     }
 
     const trimmedTitle = (title || "").trim();
     const trimmedDescription = (description || "").trim();
-    // Kiểm tra các điều kiện bắt buộc
     if (
       !trimmedTitle ||
       !trimmedDescription ||
@@ -189,15 +272,14 @@ export const uploadNews = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Thiếu tiêu đề, mô tả, ảnh minh họa hoặc nội dung.",
-        message: "Thiếu tiêu đề, mô tả, ảnh minh họa hoặc nội dung.",
+        message: "Thieu tieu de, mo ta, anh minh hoa hoac noi dung.",
       });
     }
 
     if (trimmedDescription.length > 300) {
       return res.status(400).json({
         success: false,
-        message: "Mô tả không được vượt quá 300 ký tự.",
+        message: "Mo ta khong duoc vuot qua 300 ky tu.",
       });
     }
 
@@ -208,44 +290,58 @@ export const uploadNews = async (req, res) => {
     if (normalizedContent.length === 0) {
       return res
         .status(400)
-        .json({ success: false, message: "Không có nội dung hợp lệ để lưu." });
+        .json({ success: false, message: "Khong co noi dung hop le de luu." });
     }
 
     const missingImageMeta = normalizedContent.some(
-      (block) => block.type === "image" && (!block.alt || !block.caption)
+      (block) => block.type === "image" && (!block.alt || !block.caption),
     );
 
     if (missingImageMeta) {
       return res.status(400).json({
         success: false,
-        message: "Ảnh phải có mô tả (alt) và chú thích.",
+        message: "Anh phai co mo ta (alt) va chu thich.",
       });
     }
 
-    const normalizedCategories = (parsedCategories || [])
-      .map((item) => (typeof item === "string" ? item.trim() : String(item)))
-      .filter((item) => item.length > 0);
-    const uniqueCategories = Array.from(new Set(normalizedCategories));
+    const {
+      normalized: normalizedCategories,
+      invalid: invalidCategories,
+    } = normalizeCategoryList(parsedCategories);
+
+    if (invalidCategories) {
+      return res.status(400).json({
+        success: false,
+        message: "Danh sach chuyen muc khong hop le.",
+      });
+    }
+
+    const categoriesToSave =
+      normalizedCategories.length > 0 ? normalizedCategories : [{ ...DEFAULT_CATEGORY }];
+
+    const localizedSlug = slugify(trimmedTitle, {
+      lower: true,
+      strict: true,
+      locale: "vi",
+      trim: true,
+    });
+    const fallbackSlug = slugify(trimmedTitle, { lower: true, strict: true, trim: true });
+    const slugId = localizedSlug || fallbackSlug;
 
     const news = await NewsModel.create({
       title: trimmedTitle,
       description: trimmedDescription,
-      slugId: slugify(trimmedTitle, { lower: true, strict: true }),
-      slugId: slugify(trimmedTitle, {
-        lower: true,
-        strict: true,
-        locale: "vi",
-      }),
+      slugId,
       thumbnail: files.thumbnail[0].path,
       content: normalizedContent,
-      categories: uniqueCategories.length ? uniqueCategories : ["tin-tong-hop"],
+      categories: categoriesToSave,
       author: author || "Admin",
       targetSites: parsedTargetSites,
     });
 
     return res.status(201).json({
       success: true,
-      message: "Đăng tin tức thành công",
+      message: "Dang tin tuc thanh cong",
       data: {
         id: news._id,
         title: news.title,
@@ -259,62 +355,55 @@ export const uploadNews = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Lỗi uploadNews:", error);
+    console.error("Loi uploadNews:", error);
 
     if (error?.code === 11000 && error?.keyPattern?.slugId) {
       return res.status(409).json({
         success: false,
-        message: "Tiêu đề này đã được sử dụng, vui lòng chọn tiêu đề khác.",
+        message: "Tieu de nay da duoc su dung, vui long chon tieu de khac.",
       });
     }
 
     if (error?.name === "ValidationError") {
-      const messages = Object.values(error.errors || {}).map(
-        (err) => err.message
-      );
+      const messages = Object.values(error.errors || {}).map((err) => err.message);
       return res.status(422).json({
         success: false,
-        message: messages[0] || "Dữ liệu không hợp lệ.",
+        message: messages[0] || "Du lieu khong hop le.",
       });
     }
 
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    return res.status(500).json({ success: false, message: "Loi he thong." });
   }
 };
 
-// Lấy danh sách tin tức với phân trang
 export const getNews = async (req, res) => {
   try {
-    // Lấy page và limit từ query
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 12;
     const skip = (page - 1) * limit;
 
-    // Lấy category và keyword từ query
     const { category, keyword } = req.query;
 
     let filter = {};
 
-    // Filter theo category
     if (category) {
-      filter.$or = [{ categories: category }, { category: category }];
+      filter.$or = [
+        { "categories.slug": category },
+        { "categories.value": category },
+        { categories: category },
+        { category },
+      ];
     }
 
-    // Filter theo keyword (tìm kiếm trong title và description)
     if (keyword && keyword.trim()) {
-      const searchRegex = new RegExp(keyword.trim(), "i"); // case-insensitive
+      const searchRegex = new RegExp(keyword.trim(), "i");
       const keywordFilter = {
         $or: [{ title: searchRegex }, { description: searchRegex }],
       };
 
-      // Nếu đã có filter category, kết hợp với AND
-      if (filter.$or) {
-        filter = {
-          $and: [{ $or: filter.$or }, keywordFilter],
-        };
-      } else {
-        filter = keywordFilter;
-      }
+      filter = filter.$or
+        ? { $and: [{ $or: filter.$or }, keywordFilter] }
+        : keywordFilter;
     }
 
     const totalItems = await NewsModel.countDocuments(filter);
@@ -325,7 +414,7 @@ export const getNews = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Lấy danh sách tin tức thành công",
+      message: "Lay danh sach tin tuc thanh cong",
       data: news,
       pagination: {
         totalItems,
@@ -335,34 +424,28 @@ export const getNews = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Lỗi getNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
-    console.error("Lỗi getNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Loi getNews:", error);
+    return res.status(500).json({ success: false, message: "Loi he thong." });
   }
 };
 
-// Lấy tất cả tin tức (không phân trang)
 export const getAllNews = async (req, res) => {
   try {
     const news = await NewsModel.find();
     if (!news || news.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không có tin tức." });
+        .json({ success: false, message: "Khong co tin tuc." });
     }
     return res
       .status(200)
-      .json({ success: true, message: "Lấy tin tức thành công", data: news });
+      .json({ success: true, message: "Lay tin tuc thanh cong", data: news });
   } catch (error) {
-    console.error("Lỗi getAllNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
-    console.error("Lỗi getAllNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Loi getAllNews:", error);
+    return res.status(500).json({ success: false, message: "Loi he thong." });
   }
 };
 
-// Lấy chi tiết một tin tức theo slugId
 export const getDetailNews = async (req, res) => {
   const newsId = req.params.id;
   try {
@@ -370,42 +453,49 @@ export const getDetailNews = async (req, res) => {
     if (!news) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy tin tức." });
+        .json({ success: false, message: "Khong tim thay tin tuc." });
     }
 
     return res
       .status(200)
-      .json({ success: true, message: "Lấy tin tức thành công", data: news });
+      .json({ success: true, message: "Lay tin tuc thanh cong", data: news });
   } catch (error) {
-    console.error("Lỗi getDetailNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
-    console.error("Lỗi getDetailNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
+    console.error("Loi getDetailNews:", error);
+    return res.status(500).json({ success: false, message: "Loi he thong." });
   }
 };
 
-// Lấy tin tức cho trang chủ, phân theo các mục
 export const getHomepageNews = async (req, res) => {
   try {
-    const highlight = await NewsModel.find({ categories: "highlight" })
+    const highlight = await NewsModel.find({
+      $or: [{ "categories.slug": "highlight" }, { categories: "highlight" }, { category: "highlight" }],
+    })
       .limit(3)
       .sort({ createdAt: -1 });
-    const popular = await NewsModel.find({ categories: "popular" })
+    const popular = await NewsModel.find({
+      $or: [{ "categories.slug": "popular" }, { categories: "popular" }, { category: "popular" }],
+    })
       .limit(3)
       .sort({ createdAt: -1 });
-    const greenLife = await NewsModel.find({ categories: "green-life" })
+    const greenLife = await NewsModel.find({
+      $or: [{ "categories.slug": "green-life" }, { categories: "green-life" }, { category: "green-life" }],
+    })
       .limit(5)
       .sort({ createdAt: -1 });
-    const chat = await NewsModel.find({ categories: "chat" })
+    const chat = await NewsModel.find({
+      $or: [{ "categories.slug": "chat" }, { categories: "chat" }, { category: "chat" }],
+    })
       .limit(5)
       .sort({ createdAt: -1 });
-    const health = await NewsModel.find({ categories: "health" })
+    const health = await NewsModel.find({
+      $or: [{ "categories.slug": "health" }, { categories: "health" }, { category: "health" }],
+    })
       .limit(5)
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
-      message: "Lấy dữ liệu trang chủ thành công",
+      message: "Lay du lieu trang chu thanh cong",
       data: {
         highlight,
         popular,
@@ -415,23 +505,15 @@ export const getHomepageNews = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Lỗi getHomepageNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
-    console.error("Lỗi getHomepageNews:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    console.error("Loi getHomepageNews:", error);
+    return res.status(500).json({ success: false, message: "Loi he thong." });
   }
 };
 
-// Hàm lấy slug root (bỏ hậu tố -so-xx nếu có)
 function getSlugRoot(slug) {
   return slug.replace(/-so-\d+$/, "");
 }
 
-// Lấy tin tức tương tự
 export const getRelatedPosts = async (req, res) => {
   try {
     const { slug } = req.params;
@@ -439,52 +521,45 @@ export const getRelatedPosts = async (req, res) => {
     if (!current) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy bài viết" });
+        .json({ success: false, message: "Khong tim thay bai viet" });
     }
 
-    // Chuẩn hóa categories
-    let currentCategories = [];
-    if (Array.isArray(current.categories) && current.categories.length > 0) {
-      currentCategories = current.categories;
-    } else if (current.category) {
+    let currentCategories = extractCategorySlugs(current.categories);
+    if (currentCategories.length === 0 && current.category) {
       currentCategories = [current.category];
     }
 
-    // Lấy slug root hiện tại
     const baseSlugRoot = getSlugRoot(current.slugId);
 
-    // Lấy tất cả candidates (cùng category hoặc toàn bộ)
     const candidates = await NewsModel.find({
       _id: { $ne: current._id },
     }).limit(50);
 
-    // Tính similarity slug trước
     const scored = candidates.map((post) => {
       const candidateRoot = getSlugRoot(post.slugId);
       const slugScore = stringSimilarity.compareTwoStrings(
         baseSlugRoot,
-        candidateRoot
+        candidateRoot,
       );
 
-      // Điểm category chỉ cộng thêm sau
-      const categoryScore = currentCategories.some(
-        (cat) => post.categories?.includes(cat) || post.category === cat
-      )
+      const candidateCategorySlugs = extractCategorySlugs(post.categories);
+      const categoryScore = currentCategories.some((cat) => {
+        if (candidateCategorySlugs.includes(cat)) return true;
+        if (post.category) return categoryMatchesSlug(post.category, cat);
+        return false;
+      })
         ? 0.3
         : 0;
 
       return { post, slugScore, totalScore: slugScore + categoryScore };
     });
 
-    // B1: lọc theo slugScore trước (ví dụ >= 0.5)
     let filtered = scored.filter((item) => item.slugScore >= 0.5);
 
-    // Nếu không đủ bài, fallback lấy theo category
     if (filtered.length === 0 && currentCategories.length > 0) {
       filtered = scored.filter((item) => item.totalScore > 0.3);
     }
 
-    // Nếu vẫn không có, fallback lấy bài mới nhất
     if (filtered.length === 0) {
       const latestPosts = await NewsModel.find({ _id: { $ne: current._id } })
         .sort({ createdAt: -1 })
@@ -492,7 +567,6 @@ export const getRelatedPosts = async (req, res) => {
       return res.json({ success: true, data: latestPosts });
     }
 
-    // Sắp xếp theo slugScore trước, sau đó mới đến totalScore
     filtered.sort((a, b) => {
       if (b.slugScore !== a.slugScore) return b.slugScore - a.slugScore;
       return b.totalScore - a.totalScore;
@@ -502,11 +576,14 @@ export const getRelatedPosts = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Lấy bài viết liên quan thành công",
+      message: "Lay bai viet lien quan thanh cong",
       data: related,
     });
   } catch (error) {
-    console.error("Lỗi getRelatedPosts:", error);
-    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
+    console.error("Loi getRelatedPosts:", error);
+    return res.status(500).json({ success: false, message: "Loi he thong" });
   }
 };
+
+
+
