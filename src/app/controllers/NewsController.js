@@ -200,6 +200,18 @@ const categoryMatchesSlug = (categoryEntry, slug) => {
   return false;
 };
 
+const  helperGetByCategory = (slug, limit) =>{
+  return NewsModel.find({
+    $or: [
+      { "categories.slug": slug },        // nếu categories là mảng object
+      // { categories:  [slug] },    // nếu categories là mảng string
+      // { category: slug }                  // nếu có field category đơn
+    ],
+  })
+    .limit(limit)
+    .sort({ createdAt: -1 });
+}
+
 export const uploadNews = async (req, res) => {
   try {
     const {
@@ -389,9 +401,8 @@ export const getNews = async (req, res) => {
     if (category) {
       filter.$or = [
         { "categories.slug": category },
-        { "categories.value": category },
-        { categories: category },
-        { category },
+        // { categories: [category] },
+        // { category },
       ];
     }
 
@@ -467,46 +478,22 @@ export const getDetailNews = async (req, res) => {
 
 export const getHomepageNews = async (req, res) => {
   try {
-    const highlight = await NewsModel.find({
-      $or: [{ "categories.slug": "highlight" }, { categories: "highlight" }, { category: "highlight" }],
-    })
-      .limit(3)
-      .sort({ createdAt: -1 });
-    const popular = await NewsModel.find({
-      $or: [{ "categories.slug": "popular" }, { categories: "popular" }, { category: "popular" }],
-    })
-      .limit(3)
-      .sort({ createdAt: -1 });
-    const greenLife = await NewsModel.find({
-      $or: [{ "categories.slug": "green-life" }, { categories: "green-life" }, { category: "green-life" }],
-    })
-      .limit(5)
-      .sort({ createdAt: -1 });
-    const chat = await NewsModel.find({
-      $or: [{ "categories.slug": "chat" }, { categories: "chat" }, { category: "chat" }],
-    })
-      .limit(5)
-      .sort({ createdAt: -1 });
-    const health = await NewsModel.find({
-      $or: [{ "categories.slug": "health" }, { categories: "health" }, { category: "health" }],
-    })
-      .limit(5)
-      .sort({ createdAt: -1 });
+    const [highlight, popular, greenLife, chat, health] = await Promise.all([
+      helperGetByCategory("highlight", 3),
+      helperGetByCategory("popular", 3),
+      helperGetByCategory("green-life", 5),
+      helperGetByCategory("chat", 5),
+      helperGetByCategory("health", 5),
+    ]);
 
     return res.status(200).json({
       success: true,
-      message: "Lay du lieu trang chu thanh cong",
-      data: {
-        highlight,
-        popular,
-        greenLife,
-        chat,
-        health,
-      },
+      message: "Lấy dữ liệu trang chủ thành công",
+      data: { highlight, popular, greenLife, chat, health },
     });
   } catch (error) {
-    console.error("Loi getHomepageNews:", error);
-    return res.status(500).json({ success: false, message: "Loi he thong." });
+    console.error("Lỗi getHomepageNews:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống." });
   }
 };
 
